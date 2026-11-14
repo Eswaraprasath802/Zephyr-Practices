@@ -1,0 +1,18 @@
+// Drive some led, PIN
+
+/ {
+    leds {
+        gled:gled {
+            gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>;
+            label = "GLED";
+        };
+    };
+    buttons {
+        status = "okay";
+        compatible = "gpio-keys";
+        first_button:button {
+            label = "our_first_button";
+            gpios=<&gpio0 21 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        };
+    };
+};
