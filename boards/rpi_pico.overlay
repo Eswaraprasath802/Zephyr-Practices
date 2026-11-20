@@ -1,0 +1,41 @@
+/ {
+    leds {
+        gled: gled {
+            gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>;
+            label = "GLED";
+        };
+    };
+
+    buttons {
+        status = "okay";
+        compatible = "gpio-keys";
+        first_button: button {
+            label = "our_first_button";
+            gpios = <&gpio0 21 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        };
+    };
+
+    pwmleds {
+        status = "okay";
+        compatible= "pwm-leds";
+        pwm_led: pwm_led4 {
+            label = "pwm led";
+            pwms = <&pwm 4 PWM_HZ(1000000) PWM_POLARITY_NORMAL>;
+        };
+    };
+};
+
+&pwm {
+    status = "okay";
+    pinctrl-0 = <&pwm_ch2a_default>;
+    divider-int-2 = <5>;
+    divider-frac-2 = <15>;
+};
+&pinctrl {
+    status = "okay";
+    pwm_ch2a_default: pwm_ch2a_default {
+		group1 {
+			pinmux = <PWM_2A_P20>;
+		};
+	};
+};
