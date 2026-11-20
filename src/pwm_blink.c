@@ -19,55 +19,79 @@ void mybutton_cb(const struct device *dev, struct gpio_callback *cb, uint32_t pi
 {
         printk("my button pressed \n");  
     }
+void set_pwm_brightness(uint8_t brightness){
+    pwm_set_pulse_dt(&pwm_blinky_led,(pwm_blinky_led.period*brightness)/100);
+
+}
+static uint8_t pwm_breathing_brightness=0;
+
+enum dir {UP,DOWN};
+enum dir direction=UP;
+
+void control_brightness(){
+    set_pwm_brightness(pwm_breathing_brightness);
+    if (direction==UP){
+        pwm_breathing_brightness++;
+    }
+    if (direction==DOWN){
+         pwm_breathing_brightness--;
+    }
+    if(pwm_breathing_brightness==0){
+        direction=UP;
+    }
+    if(pwm_breathing_brightness==100){
+        direction=DOWN;
+    }
+}
 
 int main(void)
 {
     int rc = 0;
     rc= pwm_is_ready_dt	(&pwm_blinky_led);
     if(!rc){
-        printk("PWM not ready, error code [%d]", rc);
+        printk("PWM not ready, error code [%d]\n", rc);
         return rc;
     }	
 
     rc = gpio_is_ready_dt(&gled_spec);
     if(!rc)
     {
-        printk("GLed not ready, error code [%d]", rc);
+        printk("GLed not ready, error code [%d]\n", rc);
         return rc;
     }
     rc = gpio_pin_configure_dt(&gled_spec, GPIO_OUTPUT_ACTIVE);
     if(rc < 0)
     {
-        printk("Gled pin confi error [%d]", rc);
+        printk("Gled pin confi error [%d]\n", rc);
         return rc;
     }
     rc = gpio_is_ready_dt(&mybutton);
     if(!rc) {
-        printk("Button device is not ready");
+        printk("Button device is not ready\n");
         return rc;
     }
     printk("PWM period in nanosecond from a device tree %u \n",pwm_blinky_led.period);
     rc=pwm_set_pulse_dt(&pwm_blinky_led,pwm_blinky_led.period);
     if(rc<0){
-        printk("set pulse failed");
+        printk("set pulse failed\n");
     }
     rc = gpio_pin_configure_dt(&mybutton, GPIO_INPUT);
     if(rc < 0)  
     {
-        printk("Can't cfg mybutton pin type");
+        printk("Can't cfg mybutton pin type\n");
         return rc;
     }
     rc = gpio_pin_interrupt_configure_dt(&mybutton, GPIO_INT_EDGE_TO_INACTIVE);
     if(rc != 0)
     {
-        printk("Can't cfg interrupt for mybutton [%d]", rc);
+        printk("Can't cfg interrupt for mybutton [%d]\n", rc);
         return rc;
     }
     gpio_init_callback(&mybutton_cb_data, mybutton_cb, BIT(mybutton.pin));
     
     rc = gpio_add_callback_dt(&mybutton, &mybutton_cb_data);
     if(rc) {
-        printk("Unable to add callback for my button");
+        printk("Unable to add callback for my button\n");
         return rc;
     }
 
@@ -76,16 +100,29 @@ int main(void)
         /*we toggle the led */
         rc = gpio_pin_set_dt(&gled_spec, 1U);
         if(rc < 0) {
-            printk("Gled cant set logical HIGH");
+            printk("Gled cant set logical HIGH\n");
             return rc;
         }
         k_msleep(1000);
         rc = gpio_pin_set_dt(&gled_spec, 0U);
         if(rc < 0) {
-            printk("Gled cant set logical LOW");
+            printk("Gled cant set logical LOW\n");
             return rc;
         }
         k_msleep(1000);
     }
 
 }
+#define MY_STACK_SIZE 4096
+#define MY_PRIORITY 5
+extern void thread_pwm_breathing(void *, void *, void *){
+    while(1){
+        control_brightness();
+        k_msleep(50);
+        printk("The brightness of led %u and direction %u\n",pwm_breathing_brightness,direction);
+    }
+
+}
+K_THREAD_DEFINE(breathing_th1, MY_STACK_SIZE,
+                thread_pwm_breathing, NULL, NULL, NULL,
+                MY_PRIORITY, 0, 300);
