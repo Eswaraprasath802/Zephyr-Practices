@@ -1,71 +1,79 @@
 # Zephyr-Practices
 
-Hands-on practice repository for learning Zephyr RTOS on embedded boards (ESP32 and Raspberry Pi Pico). Topics: Zephyr architecture, west workspace, devicetree and overlays, GPIO, UART, I2C, SPI, drivers, threads and synchronization.
+Hands-on practice repository for learning Zephyr RTOS on embedded boards (Raspberry Pi Pico and ESP32). Topics: Zephyr architecture, west workspace, devicetree and overlays, GPIO, interrupts, PWM, threads, UART, I2C, SPI and drivers.
 
-## Current example: RGB LED sequence (GPIO)
+## Current example: PWM breathing LED + button interrupt (`src/pwm_blink.c`)
 
-`src/main.c` drives three LEDs (red, green, blue) through the devicetree-based GPIO API:
+This is the file built by `CMakeLists.txt` right now. It targets the Raspberry Pi Pico (`rpi_pico`):
 
-1. Gets each LED from the devicetree by node label (`redled`, `greenled`, `blueled`).
-2. Builds a `gpio_dt_spec` for each and checks it with `gpio_is_ready_dt()`.
-3. Configures each pin as output with `gpio_pin_configure_dt()`.
-4. Loops forever: turns red, green, blue ON one by one (1 s apart), then OFF one by one (1 s apart).
+1. **GPIO LED:** the green LED (`gled`, GPIO 25) blinks in `main()`, 1 s on / 1 s off.
+2. **Button interrupt:** a button (`first_button`, GPIO 21, active low with pull-up) is set up with `gpio_pin_interrupt_configure_dt()` on `GPIO_INT_EDGE_TO_INACTIVE`. The callback prints `my button pressed`.
+3. **PWM breathing:** a PWM LED (`pwm_led`, PWM channel 2A on GPIO 20, 1 MHz period) fades from 0 to 100% duty and back.
+4. **Thread:** the breathing runs in its own thread (`breathing_th1`, 4096 B stack, priority 5, 300 ms start delay) with a 50 ms step, printing brightness and direction through `printk()`.
 
-Errors at each step are reported with `printk()`.
+## Other sources in `src/`
+
+| File | What it does |
+|------|--------------|
+| `pwm_blink.c` | GPIO blink + button interrupt + PWM breathing thread (current build) |
+| `interrupt.c` | GPIO blink + button interrupt callback |
+| `main.c` | RGB LED on/off sequence on three GPIOs (needs its own `redled`/`greenled`/`blueled` overlay nodes, the old `app.overlay` was removed) |
+
+To build a different example, change the file in `target_sources(app PRIVATE ...)` in `CMakeLists.txt`.
 
 ## Project structure
 
 ```
 .
-├── CMakeLists.txt   # Zephyr app build file
-├── prj.conf         # Kconfig options
-├── app.overlay      # Devicetree overlay defining the LED nodes
+├── CMakeLists.txt          # Zephyr app build file (selects the source file)
+├── prj.conf                # Kconfig options
+├── boards/
+│   └── rpi_pico.overlay    # Board overlay: LED, button, PWM LED, pinctrl
 └── src/
-    └── main.c       # Application code
+    ├── main.c              # RGB LED sequence
+    ├── interrupt.c         # Button interrupt example
+    └── pwm_blink.c         # PWM breathing + interrupt + thread
 ```
 
-## Devicetree overlay
+## Devicetree overlay (`boards/rpi_pico.overlay`)
 
-`app.overlay` defines the LEDs on `gpio0`, active high:
+Zephyr applies `boards/<board>.overlay` automatically when building for that board.
 
-| Node label | GPIO | Pin | Label |
-|------------|------|-----|-------|
-| `redled`   | `gpio0` | 0 | RLED |
-| `greenled` | `gpio0` | 1 | GLED |
-| `blueled`  | `gpio0` | 2 | BLED |
+| Node label | Type | Pin / channel | Notes |
+|------------|------|---------------|-------|
+| `gled` | GPIO LED | `gpio0` pin 25 | active high |
+| `first_button` | `gpio-keys` button | `gpio0` pin 21 | active low, pull-up |
+| `pwm_led` | `pwm-leds` | PWM channel 4 (`pwm`), 1 MHz period | normal polarity |
+| `pwm_ch2a_default` | pinctrl | `PWM_2A_P20` | PWM channel 2A on GPIO 20 |
 
-Change the pin numbers or GPIO controller to match your board and wiring.
+The `&pwm` node is enabled with `divider-int-2 = <5>` and `divider-frac-2 = <15>`.
 
 ## Requirements
 
 - Zephyr RTOS and SDK, set up with a west workspace
 - `ZEPHYR_BASE` environment variable set (used by `CMakeLists.txt`)
-- A supported board (e.g. ESP32 or Raspberry Pi Pico) and 3 LEDs with resistors
+- Raspberry Pi Pico, an LED on GPIO 20 (through a resistor) and a button on GPIO 21 to ground
 
 ## Build and flash
 
 ```bash
 # from your west workspace, with the Zephyr environment active
-west build -b <board> /path/to/Zephyr-Practices -p always
+west build -b rpi_pico /path/to/Zephyr-Practices -p always
 west flash
 ```
 
-Replace `<board>` with your target board name (e.g. `esp32_devkitc/esp32/procpu`, `rpi_pico`). The `app.overlay` in the app folder is picked up automatically.
-
-## Monitor output
-
-```bash
-west espressif monitor   # ESP32
-# or use any serial terminal at the board's console baud rate
-```
+Use any serial terminal at the board's console baud rate to see the `printk()` output.
 
 ## Learning roadmap
 
 - [x] GPIO output with devicetree and overlays
+- [x] GPIO interrupts (button callback)
+- [x] PWM
+- [x] Threads (`K_THREAD_DEFINE`)
+- [ ] Synchronization (mutex, semaphore)
 - [ ] UART
 - [ ] I2C
 - [ ] SPI
-- [ ] Threads and synchronization
 - [ ] Custom drivers
 
 ## Author
