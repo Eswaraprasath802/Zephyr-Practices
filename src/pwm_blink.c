@@ -28,6 +28,10 @@ static uint8_t pwm_breathing_brightness=0;
 enum dir {UP,DOWN};
 enum dir direction=UP;
 
+struct k_timer my_timer;
+void control_brightness();
+K_TIMER_DEFINE(my_timer,control_brightness, NULL);
+
 void control_brightness(){
     set_pwm_brightness(pwm_breathing_brightness);
     if (direction==UP){
@@ -52,7 +56,6 @@ int main(void)
         printk("PWM not ready, error code [%d]\n", rc);
         return rc;
     }	
-
     rc = gpio_is_ready_dt(&gled_spec);
     if(!rc)
     {
@@ -70,6 +73,7 @@ int main(void)
         printk("Button device is not ready\n");
         return rc;
     }
+    k_timer_start(&my_timer, K_MSEC(1000), K_MSEC(10));
     printk("PWM period in nanosecond from a device tree %u \n",pwm_blinky_led.period);
     rc=pwm_set_pulse_dt(&pwm_blinky_led,pwm_blinky_led.period);
     if(rc<0){
@@ -115,7 +119,7 @@ int main(void)
 }
 #define MY_STACK_SIZE 4096
 #define MY_PRIORITY 5
-extern void thread_pwm_breathing(void *, void *, void *){
+extern void pwm_breathing(void *, void *, void *){
     while(1){
         control_brightness();
         k_msleep(50);
@@ -123,6 +127,6 @@ extern void thread_pwm_breathing(void *, void *, void *){
     }
 
 }
-K_THREAD_DEFINE(breathing_th1, MY_STACK_SIZE,
-                thread_pwm_breathing, NULL, NULL, NULL,
-                MY_PRIORITY, 0, 300);
+// K_THREAD_DEFINE(breathing_th1, MY_STACK_SIZE,
+//                 thread_pwm_breathing, NULL, NULL, NULL,
+//                 MY_PRIORITY, 0, 300);
