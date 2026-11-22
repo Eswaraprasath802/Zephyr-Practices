@@ -13,11 +13,39 @@ static const struct gpio_dt_spec mybutton = GPIO_DT_SPEC_GET_OR(BUTTON1, gpios,{
 const struct pwm_dt_spec pwm_blinky_led = PWM_DT_SPEC_GET(PWM_BLINKY);
 
 
+void set_pwm_brightness(uint8_t brightness);
+
 static struct gpio_callback mybutton_cb_data;
+#define FAN_STATES 4
+uint8_t fan_state_step=0;
+uint8_t fan_speed=0;
 
 void mybutton_cb(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-        printk("my button pressed \n");  
+       fan_state_step=(fan_state_step+1)%FAN_STATES;
+
+       switch(fan_state_step){
+        case 0:
+            fan_speed=0;
+            break;
+         
+        case 1:
+            fan_speed=25;
+            break;
+
+        case 2:
+            fan_speed=75;
+            break;
+
+        case 3:
+            fan_speed=100;
+            break;
+
+        default:
+            printk("The step size is invalid");
+            break;
+       }
+       set_pwm_brightness(fan_speed);
     }
 void set_pwm_brightness(uint8_t brightness){
     pwm_set_pulse_dt(&pwm_blinky_led,(pwm_blinky_led.period*brightness)/100);
@@ -28,9 +56,9 @@ static uint8_t pwm_breathing_brightness=0;
 enum dir {UP,DOWN};
 enum dir direction=UP;
 
-struct k_timer my_timer;
+// struct k_timer my_timer;
 void control_brightness();
-K_TIMER_DEFINE(my_timer,control_brightness, NULL);
+// K_TIMER_DEFINE(my_timer,control_brightness, NULL);
 
 void control_brightness(){
     set_pwm_brightness(pwm_breathing_brightness);
@@ -73,12 +101,13 @@ int main(void)
         printk("Button device is not ready\n");
         return rc;
     }
-    k_timer_start(&my_timer, K_MSEC(1000), K_MSEC(10));
+    /* k_timer_start(&my_timer, K_MSEC(1000), K_MSEC(10));
     printk("PWM period in nanosecond from a device tree %u \n",pwm_blinky_led.period);
     rc=pwm_set_pulse_dt(&pwm_blinky_led,pwm_blinky_led.period);
     if(rc<0){
         printk("set pulse failed\n");
     }
+        */
     rc = gpio_pin_configure_dt(&mybutton, GPIO_INPUT);
     if(rc < 0)  
     {
@@ -117,7 +146,7 @@ int main(void)
     }
 
 }
-#define MY_STACK_SIZE 4096
+ /*#define MY_STACK_SIZE 4096
 #define MY_PRIORITY 5
 extern void pwm_breathing(void *, void *, void *){
     while(1){
@@ -127,6 +156,7 @@ extern void pwm_breathing(void *, void *, void *){
     }
 
 }
-// K_THREAD_DEFINE(breathing_th1, MY_STACK_SIZE,
-//                 thread_pwm_breathing, NULL, NULL, NULL,
-//                 MY_PRIORITY, 0, 300);
+K_THREAD_DEFINE(breathing_th1, MY_STACK_SIZE,
+                pwm_breathing, NULL, NULL, NULL,
+                MY_PRIORITY, 0, 300);
+*/
