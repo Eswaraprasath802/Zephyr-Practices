@@ -3,4 +3,4 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(app LANGUAGES C)
 
-target_sources(app PRIVATE src/pwm_blink.c)
+target_sources(app PRIVATE src/msgq_sample.c)
