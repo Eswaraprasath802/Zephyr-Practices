@@ -1,21 +1,25 @@
 # Zephyr-Practices
 
-Hands-on practice repository for learning Zephyr RTOS on embedded boards (Raspberry Pi Pico and ESP32). Topics: Zephyr architecture, west workspace, devicetree and overlays, GPIO, interrupts, PWM, threads, UART, I2C, SPI and drivers.
+Hands-on practice repository for learning Zephyr RTOS on embedded boards (Raspberry Pi Pico and ESP32). Topics: Zephyr architecture, west workspace, devicetree and overlays, GPIO, interrupts, PWM, threads, message queues, UART, I2C, SPI and drivers.
 
-## Current example: PWM breathing LED + button interrupt (`src/pwm_blink.c`)
+## Current example: multithreaded message passing (`src/msgq_sample.c`)
 
-This is the file built by `CMakeLists.txt` right now. It targets the Raspberry Pi Pico (`rpi_pico`):
+This is the file built by `CMakeLists.txt` right now. It uses a Zephyr message queue (`k_msgq`) to pass sensor readings from two producer threads to one consumer thread:
 
-1. **GPIO LED:** the green LED (`gled`, GPIO 25) blinks in `main()`, 1 s on / 1 s off.
-2. **Button interrupt:** a button (`first_button`, GPIO 21, active low with pull-up) is set up with `gpio_pin_interrupt_configure_dt()` on `GPIO_INT_EDGE_TO_INACTIVE`. The callback prints `my button pressed`.
-3. **PWM breathing:** a PWM LED (`pwm_led`, PWM channel 2A on GPIO 20, 1 MHz period) fades from 0 to 100% duty and back.
-4. **Thread:** the breathing runs in its own thread (`breathing_th1`, 4096 B stack, priority 5, 300 ms start delay) with a 50 ms step, printing brightness and direction through `printk()`.
+1. **Message format:** `struct sensor_msg` carries the producer `id`, an uptime timestamp `ts` (ms) and a `value`.
+2. **Queue:** `K_MSGQ_DEFINE(sensor_q, sizeof(struct sensor_msg), 8, 4)` holds up to 8 messages, 4-byte aligned.
+3. **Producers:** `soil_th` (id 1, every 500 ms) and `ldr_th` (id 2, every 300 ms) share one `producer()` function. Each gets its own `struct producer_cfg` through `p1`. They send fake readings with `k_msgq_put()` and a 10 ms timeout, so a full queue drops the message and prints a warning instead of blocking forever.
+4. **Consumer:** `cons_th` (priority 4, higher than the producers at 5) sleeps in `k_msgq_get(..., K_FOREVER)` until a message arrives, toggles the LED (`gled`) and prints the message with `printk()`, including how many messages are still queued.
+5. **Threads:** all three are created statically with `K_THREAD_DEFINE` (1024 B stacks); `main()` only prints a start message and returns.
+
+Tested on the Raspberry Pi Pico (`rpi_pico`, LED on GPIO 25) and on the ESP32 DevKitC (`esp32_devkitc_wroom/esp32/procpu`, LED on GPIO 2, Zephyr 3.7.0).
 
 ## Other sources in `src/`
 
 | File | What it does |
 |------|--------------|
-| `pwm_blink.c` | GPIO blink + button interrupt + PWM breathing thread (current build) |
+| `msgq_sample.c` | Two producer threads + one consumer over a message queue (current build) |
+| `pwm_blink.c` | GPIO blink + button interrupt + PWM breathing thread (Pico, GPIO 20 LED + GPIO 21 button) |
 | `interrupt.c` | GPIO blink + button interrupt callback |
 | `main.c` | RGB LED on/off sequence on three GPIOs (needs its own `redled`/`greenled`/`blueled` overlay nodes, the old `app.overlay` was removed) |
 
@@ -25,19 +29,23 @@ To build a different example, change the file in `target_sources(app PRIVATE ...
 
 ```
 .
-├── CMakeLists.txt          # Zephyr app build file (selects the source file)
-├── prj.conf                # Kconfig options
+├── CMakeLists.txt                          # Zephyr app build file (selects the source file)
+├── prj.conf                                # Kconfig options
 ├── boards/
-│   └── rpi_pico.overlay    # Board overlay: LED, button, PWM LED, pinctrl
+│   ├── rpi_pico.overlay                    # Pico overlay: LED, button, PWM LED, pinctrl
+│   └── esp32_devkitc_wroom_procpu.overlay  # ESP32 overlay: LED on GPIO 2
 └── src/
     ├── main.c              # RGB LED sequence
     ├── interrupt.c         # Button interrupt example
-    └── pwm_blink.c         # PWM breathing + interrupt + thread
+    ├── pwm_blink.c         # PWM breathing + interrupt + thread
+    └── msgq_sample.c       # Message queue: producers + consumer
 ```
 
-## Devicetree overlay (`boards/rpi_pico.overlay`)
+## Devicetree overlays (`boards/`)
 
 Zephyr applies `boards/<board>.overlay` automatically when building for that board.
+
+### `rpi_pico.overlay`
 
 | Node label | Type | Pin / channel | Notes |
 |------------|------|---------------|-------|
@@ -48,17 +56,30 @@ Zephyr applies `boards/<board>.overlay` automatically when building for that boa
 
 The `&pwm` node is enabled with `divider-int-2 = <5>` and `divider-frac-2 = <15>`.
 
+### `esp32_devkitc_wroom_procpu.overlay`
+
+| Node label | Type | Pin | Notes |
+|------------|------|-----|-------|
+| `gled` | `gpio-leds` | `gpio0` pin 2 | active high, on-board LED used by `msgq_sample.c` |
+
 ## Requirements
 
 - Zephyr RTOS and SDK, set up with a west workspace
 - `ZEPHYR_BASE` environment variable set (used by `CMakeLists.txt`)
-- Raspberry Pi Pico, an LED on GPIO 20 (through a resistor) and a button on GPIO 21 to ground
+- Raspberry Pi Pico or ESP32 DevKitC
+- For `pwm_blink.c` / `interrupt.c`: an LED on GPIO 20 (through a resistor) and a button on GPIO 21 to ground
 
 ## Build and flash
 
 ```bash
 # from your west workspace, with the Zephyr environment active
+
+# Raspberry Pi Pico
 west build -b rpi_pico /path/to/Zephyr-Practices -p always
+west flash
+
+# ESP32 DevKitC
+west build -b esp32_devkitc_wroom/esp32/procpu /path/to/Zephyr-Practices -p always
 west flash
 ```
 
@@ -70,7 +91,14 @@ Use any serial terminal at the board's console baud rate to see the `printk()` o
 - [x] GPIO interrupts (button callback)
 - [x] PWM
 - [x] Threads (`K_THREAD_DEFINE`)
-- [ ] Synchronization (mutex, semaphore)
+- [x] Message queues (multithreaded message passing)
+- [ ] Multithreaded sensor data logger with synchronization
+- [ ] Preemptive vs cooperative threads (two LEDs)
+- [ ] Semaphore (button ISR wakes a thread to turn on an LED)
+- [ ] Mutex (two threads sharing an I2C LCD)
+- [ ] Priority inversion with three threads
+- [ ] Timers: one-shot, periodic, start/stop/restart with buttons
+- [ ] Timer + workqueue, GPIO interrupt + workqueue
 - [ ] UART
 - [ ] I2C
 - [ ] SPI
