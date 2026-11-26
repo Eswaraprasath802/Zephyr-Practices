@@ -1,0 +1,10 @@
+/{
+  leds {
+    status = "okay";
+    compatible = "gpio-leds";
+        gled: gled {
+            gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+            label = "GLED";
+        };
+};
+};
